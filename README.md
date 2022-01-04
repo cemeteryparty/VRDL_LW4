@@ -5,6 +5,10 @@ python3 tools/gdget.py 1GL_Rh1N-WjrvF_-YOKOyvq0zrV6TF4hb -O dataset.zip
 unzip -qq dataset.zip -d ./
 rm dataset.zip
 
+mv training_hr_images/ dataset/
+mv dataset/training_hr_images/ dataset/train/
+
+
 pip install -r requirements.txt
 ```
 

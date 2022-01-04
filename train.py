@@ -1,23 +1,24 @@
-import os
-import shutil
-from math import log10
+from SRGAN import pytorch_ssim
+from SRGAN.data_utils import TrainDatasetFromFolder
+from SRGAN.data_utils import ValDatasetFromFolder
+from SRGAN.data_utils import display_transform
+from SRGAN.loss import GeneratorLoss
+from SRGAN.model import Generator
+from SRGAN.model import Discriminator
 
-import pandas as pd
+from torch.utils.data import DataLoader
+from torch.autograd import Variable
+import torchvision.utils as utils
 import torch.optim as optim
 import torch.utils.data
-import torchvision.utils as utils
-from torch.autograd import Variable
-from torch.utils.data import DataLoader
-from tqdm import tqdm
+
 from sklearn.model_selection import train_test_split
-
-import pytorch_ssim
-from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, display_transform
-from loss import GeneratorLoss
-from model import Generator, Discriminator
-
-
-
+from math import log10
+from tqdm import tqdm
+import pandas as pd
+import numpy as np
+import shutil
+import os
 
 if __name__ == "__main__":
     import argparse
@@ -31,17 +32,19 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", default=64, type=int, help="batch size")
     parser.add_argument("--save-path", default="models", type=str, help="path to save training weight")
     args = parser.parse_args()
-    
-    print(args)
+    # print(args)
+    # exit(0)
+
     DATASET_PATH   = args.dataset_path
     CROP_SIZE      = args.crop_size
     UPSCALE_FACTOR = args.upscale_factor
     NUM_EPOCHS     = args.epochs
     BATCH_SIZE     = args.batch_size
     SAVE_PATH      = args.save_path
+    os.makedirs(SAVE_PATH, exist_ok=True)
 
-    TRAIN_PATH = "train"
-    VALID_PATH = "valid"
+    TRAIN_PATH = "DS_tv/train"
+    VALID_PATH = "DS_tv/valid"
     os.makedirs(TRAIN_PATH, exist_ok=True)
     os.makedirs(VALID_PATH, exist_ok=True)
     img_names = os.listdir(DATASET_PATH)
@@ -50,41 +53,43 @@ if __name__ == "__main__":
         shutil.copyfile(os.path.join(DATASET_PATH, img_name), os.path.join(TRAIN_PATH, img_name))
     for img_name in valid_imgs:
         shutil.copyfile(os.path.join(DATASET_PATH, img_name), os.path.join(VALID_PATH, img_name))
-    exit()
 
     train_set = TrainDatasetFromFolder(TRAIN_PATH, crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
     val_set = ValDatasetFromFolder(VALID_PATH, upscale_factor=UPSCALE_FACTOR)
     train_loader = DataLoader(dataset=train_set, num_workers=4, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(dataset=val_set, num_workers=4, batch_size=1, shuffle=False)
-    
+    val_loader = DataLoader(dataset=val_set, num_workers=4, batch_size=1, shuffle=True)
+
     netG = Generator(UPSCALE_FACTOR)
     print("# generator parameters:", sum(param.numel() for param in netG.parameters()))
     netD = Discriminator()
     print("# discriminator parameters:", sum(param.numel() for param in netD.parameters()))
-    
+
     generator_criterion = GeneratorLoss()
-    
+
     if torch.cuda.is_available():
         netG.cuda()
         netD.cuda()
         generator_criterion.cuda()
-    
+
     optimizerG = optim.Adam(netG.parameters())
     optimizerD = optim.Adam(netD.parameters())
-    
+
+    monitor = "ssim"
+    mode    = "max"
+    bound   = np.inf if mode == "min" else (-np.inf)
+
     results = {'d_loss': [], 'g_loss': [], 'd_score': [], 'g_score': [], 'psnr': [], 'ssim': []}
-    
     for epoch in range(1, NUM_EPOCHS + 1):
         train_bar = tqdm(train_loader)
         running_results = {'batch_sizes': 0, 'd_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
-    
+
         netG.train()
         netD.train()
         for data, target in train_bar:
             g_update_first = True
             batch_size = data.size(0)
             running_results['batch_sizes'] += batch_size
-    
+
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
             ###########################
@@ -95,14 +100,14 @@ if __name__ == "__main__":
             if torch.cuda.is_available():
                 z = z.cuda()
             fake_img = netG(z)
-    
+
             netD.zero_grad()
             real_out = netD(real_img).mean()
             fake_out = netD(fake_img).mean()
             d_loss = 1 - real_out + fake_out
             d_loss.backward(retain_graph=True)
             optimizerD.step()
-    
+
             ############################
             # (2) Update G network: minimize 1-D(G(z)) + Perception Loss + Image Loss + TV Loss
             ###########################
@@ -113,11 +118,11 @@ if __name__ == "__main__":
             ##
             g_loss = generator_criterion(fake_out, fake_img, real_img)
             g_loss.backward()
-            
+
             fake_img = netG(z)
             fake_out = netD(fake_img).mean()
-            
-            
+
+
             optimizerG.step()
 
             # loss for current batch before optimization 
@@ -131,11 +136,10 @@ if __name__ == "__main__":
                 running_results['g_loss'] / running_results['batch_sizes'],
                 running_results['d_score'] / running_results['batch_sizes'],
                 running_results['g_score'] / running_results['batch_sizes']))
-    
+
         netG.eval()
-        out_path = 'training_results/SRF_' + str(UPSCALE_FACTOR) + '/'
-        if not os.path.exists(out_path):
-            os.makedirs(out_path)
+        out_path = "outputs/images"
+        os.makedirs(out_path, exist_ok=True)
         
         with torch.no_grad():
             val_bar = tqdm(val_loader)
@@ -150,7 +154,7 @@ if __name__ == "__main__":
                     lr = lr.cuda()
                     hr = hr.cuda()
                 sr = netG(lr)
-        
+
                 batch_mse = ((sr - hr) ** 2).data.mean()
                 valing_results['mse'] += batch_mse * batch_size
                 batch_ssim = pytorch_ssim.ssim(sr, hr).item()
@@ -166,16 +170,30 @@ if __name__ == "__main__":
                      display_transform()(sr.data.cpu().squeeze(0))])
             val_images = torch.stack(val_images)
             val_images = torch.chunk(val_images, val_images.size(0) // 15)
-            val_save_bar = tqdm(val_images, desc='[saving training results]')
-            index = 1
-            for image in val_save_bar:
+
+            n_export_image = 3
+            for img_idx in range(min(n_export_image, len(val_images))):
+                image = val_images[img_idx]
+                img_name = "SRF_{}_ep{}_{}.png".format(UPSCALE_FACTOR, epoch, img_idx)
                 image = utils.make_grid(image, nrow=3, padding=5)
-                utils.save_image(image, out_path + 'epoch_%d_index_%d.png' % (epoch, index), padding=5)
-                index += 1
-    
+                utils.save_image(image, os.path.join(out_path, img_name), padding=5)
+
         # save model parameters
-        torch.save(netG.state_dict(), 'epochs/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
-        torch.save(netD.state_dict(), 'epochs/netD_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))
+        if ((mode == "min" and valing_results[monitor] < bound) or \
+            (mode == "max" and valing_results[monitor] > bound)):
+            print("Epoch {} : {} improved from {} to {}\n".format(
+                epoch, monitor, bound, valing_results[monitor])
+            )
+            bound = valing_results[monitor]
+            torch.save(
+                netG.state_dict(),
+                os.path.join(SAVE_PATH, "netGx{}_ep{}.pth".format(UPSCALE_FACTOR, epoch))
+            )
+            torch.save(
+                netD.state_dict(),
+                os.path.join(SAVE_PATH, "netDx{}_ep{}.pth".format(UPSCALE_FACTOR, epoch))
+            )
+
         # save loss\scores\psnr\ssim
         results['d_loss'].append(running_results['d_loss'] / running_results['batch_sizes'])
         results['g_loss'].append(running_results['g_loss'] / running_results['batch_sizes'])
@@ -185,9 +203,13 @@ if __name__ == "__main__":
         results['ssim'].append(valing_results['ssim'])
     
         if epoch % 10 == 0 and epoch != 0:
-            out_path = 'statistics/'
+            out_path = "outputs/statistics"
+            os.makedirs(out_path, exist_ok=True)
+
             data_frame = pd.DataFrame(
                 data={'Loss_D': results['d_loss'], 'Loss_G': results['g_loss'], 'Score_D': results['d_score'],
                       'Score_G': results['g_score'], 'PSNR': results['psnr'], 'SSIM': results['ssim']},
                 index=range(1, epoch + 1))
-            data_frame.to_csv(out_path + 'srf_' + str(UPSCALE_FACTOR) + '_train_results.csv', index_label='Epoch')
+            data_frame.to_csv(
+                os.path.join(out_path, "SRF_{}_train_results.csv".format(UPSCALE_FACTOR)), index_label="Epoch"
+            )
