@@ -77,6 +77,7 @@ if __name__ == "__main__":
     monitor = "ssim"
     mode    = "max"
     bound   = np.inf if mode == "min" else (-np.inf)
+    save_model_log = ""
 
     results = {'d_loss': [], 'g_loss': [], 'd_score': [], 'g_score': [], 'psnr': [], 'ssim': []}
     for epoch in range(1, NUM_EPOCHS + 1):
@@ -168,30 +169,32 @@ if __name__ == "__main__":
                 val_images.extend(
                     [display_transform()(val_hr_restore.squeeze(0)), display_transform()(hr.data.cpu().squeeze(0)),
                      display_transform()(sr.data.cpu().squeeze(0))])
-            val_images = torch.stack(val_images)
-            val_images = torch.chunk(val_images, val_images.size(0) // 15)
 
-            n_export_image = 3
-            for img_idx in range(min(n_export_image, len(val_images))):
-                image = val_images[img_idx]
-                img_name = "SRF_{}_ep{}_{}.png".format(UPSCALE_FACTOR, epoch, img_idx)
-                image = utils.make_grid(image, nrow=3, padding=5)
-                utils.save_image(image, os.path.join(out_path, img_name), padding=5)
+            if epoch % 10 == 0 and epoch != 0:
+                val_images = torch.stack(val_images)
+                val_images = torch.chunk(val_images, val_images.size(0) // 15)
+
+                n_export_image = 3
+                for img_idx in range(min(n_export_image, len(val_images))):
+                    image = val_images[img_idx]
+                    img_name = "SRF_{}_ep{}_{}.png".format(UPSCALE_FACTOR, epoch, img_idx)
+                    image = utils.make_grid(image, nrow=3, padding=5)
+                    utils.save_image(image, os.path.join(out_path, img_name), padding=5)
 
         # save model parameters
         if ((mode == "min" and valing_results[monitor] < bound) or \
             (mode == "max" and valing_results[monitor] > bound)):
-            print("Epoch {} : {} improved from {} to {}\n".format(
+            save_model_log = "Epoch {} : {} improved from {} to {}\n".format(
                 epoch, monitor, bound, valing_results[monitor])
-            )
+            print(save_model_log)
             bound = valing_results[monitor]
             torch.save(
                 netG.state_dict(),
-                os.path.join(SAVE_PATH, "netGx{}_ep{}.pth".format(UPSCALE_FACTOR, epoch))
+                os.path.join(SAVE_PATH, "netG_SRx{}.pth".format(UPSCALE_FACTOR))
             )
             torch.save(
                 netD.state_dict(),
-                os.path.join(SAVE_PATH, "netDx{}_ep{}.pth".format(UPSCALE_FACTOR, epoch))
+                os.path.join(SAVE_PATH, "netD_SRx{}.pth".format(UPSCALE_FACTOR))
             )
 
         # save loss\scores\psnr\ssim
@@ -213,3 +216,4 @@ if __name__ == "__main__":
             data_frame.to_csv(
                 os.path.join(out_path, "SRF_{}_train_results.csv".format(UPSCALE_FACTOR)), index_label="Epoch"
             )
+    print("Last save model log: {}".format(save_model_log))

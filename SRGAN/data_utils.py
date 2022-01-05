@@ -57,7 +57,9 @@ class TrainDatasetFromFolder(Dataset):
         width, height = img.size
         if min(width, height) < self.crop_size:
             ratio = self.crop_size / min(width, height)
-            img = img.resize((ceil(width * ratio), ceil(height * ratio)))
+            img = img.resize(
+                (ceil(width * ratio), ceil(height * ratio)), resample=PIL.Image.BICUBIC
+            )
         hr_image = self.hr_transform(img)
         lr_image = self.lr_transform(hr_image)
         return lr_image, hr_image
@@ -107,48 +109,3 @@ class TestDatasetFromFolder(Dataset):
 
     def __len__(self):
         return len(self.lr_filenames)
-
-# class TrainDataset(Dataset):
-#     def __init__(self, dirname, img_names, crop_size, upscale_factor):
-#         super(TrainDataset, self).__init__()
-#         self.image_filenames = [join(dirname, x) for x in img_names if is_image_file(x)]
-#         self.crop_size = calculate_valid_crop_size(crop_size, upscale_factor)
-#         self.upscale_factor = upscale_factor
-#         self.hr_transform = train_hr_transform(crop_size)
-#         self.lr_transform = train_lr_transform(crop_size, upscale_factor)
-
-#     def __getitem__(self, index):
-#         img = Image.open(self.image_filenames[index])
-#         if min(img.size) < 150:
-#             newsize = [
-#                 img.size[ax] // min(img.size) * self.crop_size for ax in range(2)
-#             ]
-#             img = img.resize(tuple(newsize))
-#         hr_image = self.hr_transform(img)
-#         lr_image = self.lr_transform(hr_image)
-#         return lr_image, hr_image
-
-#     def __len__(self):
-#         return len(self.image_filenames)
-
-
-# class ValDataset(Dataset):
-#     def __init__(self, dirname, img_names, upscale_factor):
-#         super(ValDataset, self).__init__()
-#         self.image_filenames = [join(dirname, x) for x in img_names if is_image_file(x)]
-#         self.upscale_factor = upscale_factor
-
-#     def __getitem__(self, index):
-#         hr_image = Image.open(self.image_filenames[index])
-#         w, h = hr_image.size
-#         crop_size = calculate_valid_crop_size(min(w, h), self.upscale_factor)
-#         lr_scale = Resize(crop_size // self.upscale_factor, interpolation=InterpolationMode.BICUBIC)
-#         hr_scale = Resize(crop_size, interpolation=InterpolationMode.BICUBIC)
-#         hr_image = CenterCrop(crop_size)(hr_image)
-#         lr_image = lr_scale(hr_image)
-#         hr_restore_img = hr_scale(lr_image)
-#         return ToTensor()(lr_image), ToTensor()(hr_restore_img), ToTensor()(hr_image)
-
-#     def __len__(self):
-#         return len(self.image_filenames)
-
