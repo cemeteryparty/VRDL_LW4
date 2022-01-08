@@ -2,14 +2,13 @@ from os import listdir
 from os.path import join
 
 from PIL import Image
-from torch.utils.data.dataset import Dataset
-from torchvision.transforms import Compose
-from torchvision.transforms import RandomCrop
+import torchvision.transforms as TT
+from torchvision.transforms import Resize
 from torchvision.transforms import ToTensor
 from torchvision.transforms import ToPILImage
 from torchvision.transforms import CenterCrop
-from torchvision.transforms import Resize
 from torchvision.transforms import InterpolationMode
+from torch.utils.data.dataset import Dataset
 from math import ceil
 
 def is_image_file(filename):
@@ -21,14 +20,17 @@ def calculate_valid_crop_size(crop_size, upscale_factor):
 
 
 def train_hr_transform(crop_size):
-    return Compose([
-        RandomCrop(crop_size),
+    return TT.Compose([
+        TT.RandomCrop(crop_size),
+        TT.RandomHorizontalFlip(p=0.5),
+        TT.RandomVerticalFlip(p=0.5),
+        TT.RandomAdjustSharpness(sharpness_factor=2, p=1),
         ToTensor(),
     ])
 
 
 def train_lr_transform(crop_size, upscale_factor):
-    return Compose([
+    return TT.Compose([
         ToPILImage(),
         Resize(crop_size // upscale_factor, interpolation=InterpolationMode.BICUBIC),
         ToTensor()
@@ -36,7 +38,7 @@ def train_lr_transform(crop_size, upscale_factor):
 
 
 def display_transform():
-    return Compose([
+    return TT.Compose([
         ToPILImage(),
         Resize(400),
         CenterCrop(400),
@@ -58,7 +60,7 @@ class TrainDatasetFromFolder(Dataset):
         if min(width, height) < self.crop_size:
             ratio = self.crop_size / min(width, height)
             img = img.resize(
-                (ceil(width * ratio), ceil(height * ratio)), resample=PIL.Image.BICUBIC
+                (ceil(width * ratio), ceil(height * ratio)), resample=Image.BICUBIC
             )
         hr_image = self.hr_transform(img)
         lr_image = self.lr_transform(hr_image)

@@ -19,9 +19,16 @@ from torchsummary import summary
 import torch
 torch.cuda.is_available()
 for GPU_ID in range(torch.cuda.device_count()):
-	print(torch.cuda.get_device_name(GPU_ID))
+    print(torch.cuda.get_device_name(GPU_ID))
 ```
 
-original                   |  3x Super Resolution
-:-------------------------:|:-------------------------:
-![](images/testing_lr_images/00.png)  |  ![](images/testing_hr_images/00_pred.png)
+<p style="margin: auto">
+    <img src="images/testing_lr_images/00.png" style="width: 40%">
+    <img src="images/testing_lr_images/00.png" style="width: 40%">
+</p>
+
+## Reference
+
+[leftthomas/SRGAN](https://github.com/leftthomas/SRGAN)
+
+[Photo-Realistic Single Image Super-Resolution Using a Generative Adversarial Network](https://arxiv.org/abs/1609.04802)
