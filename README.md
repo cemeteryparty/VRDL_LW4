@@ -83,7 +83,7 @@ python3 inference.py --upscale_factor 4 --model-path models/netG_SRx4.pth
 
 <p style="margin: auto">
     <img src="images/testing_lr_images/00.png" style="width: 40%">
-    <img src="images/testing_hr_images/00.png" style="width: 40%">
+    <img src="images/testing_hr_images/00_pred.png" style="width: 40%">
 </p>
 
 ## Reference
